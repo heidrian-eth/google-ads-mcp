@@ -16,6 +16,7 @@
 
 """Common utilities used by the MCP server."""
 
+from functools import lru_cache
 from typing import Any
 import proto
 import logging
@@ -61,29 +62,43 @@ def _get_login_customer_id() -> str:
     return os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 
 
-def _get_googleads_client() -> GoogleAdsClient:
+def _normalize_customer_id(customer_id: str | None) -> str | None:
+    """Normalizes customer ids so callers can pass values with or without dashes."""
+    if customer_id is None:
+        return None
+    normalized = str(customer_id).replace("-", "").strip()
+    return normalized or None
+
+
+@lru_cache(maxsize=32)
+def get_googleads_client(
+    login_customer_id: str | None = None,
+) -> GoogleAdsClient:
+    """Returns a Google Ads client, optionally scoped to a manager account."""
     # Use this line if you have a google-ads.yaml file
     # client = GoogleAdsClient.load_from_storage()
+    resolved_login_customer_id = _normalize_customer_id(
+        login_customer_id or _get_login_customer_id()
+    )
     client = GoogleAdsClient(
         credentials=_create_credentials(),
         developer_token=_get_developer_token(),
-        login_customer_id=_get_login_customer_id(),
+        login_customer_id=resolved_login_customer_id,
     )
 
     return client
 
 
-_googleads_client = _get_googleads_client()
-
-
-def get_googleads_service(serviceName: str) -> GoogleAdsServiceClient:
-    return _googleads_client.get_service(
+def get_googleads_service(
+    serviceName: str, login_customer_id: str | None = None
+) -> GoogleAdsServiceClient:
+    return get_googleads_client(login_customer_id).get_service(
         serviceName, interceptors=[MCPHeaderInterceptor()]
     )
 
 
-def get_googleads_type(typeName: str):
-    return _googleads_client.get_type(typeName)
+def get_googleads_type(typeName: str, login_customer_id: str | None = None):
+    return get_googleads_client(login_customer_id).get_type(typeName)
 
 
 def format_output_value(value: Any) -> Any:
