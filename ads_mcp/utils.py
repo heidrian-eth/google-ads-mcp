@@ -108,9 +108,27 @@ def format_output_value(value: Any) -> Any:
         return value
 
 
+def _resolve_proto_attr(row: proto.Message, attr: str) -> Any:
+    """Resolve a GAQL field path on a proto-plus row.
+
+    proto-plus renames fields that clash with Python built-ins by appending an
+    underscore (e.g. ``type`` → ``type_``).  The field mask returned by the API
+    uses the original proto name, so we try the original first and fall back to
+    the suffixed variant.
+    """
+    try:
+        return get_nested_attr(row, attr)
+    except AttributeError:
+        # Try the proto-plus escaped name: split on '.', append '_' to the
+        # last segment, and retry.
+        parts = attr.split(".")
+        parts[-1] = parts[-1] + "_"
+        return get_nested_attr(row, ".".join(parts))
+
+
 def format_output_row(row: proto.Message, attributes):
     return {
-        attr: format_output_value(get_nested_attr(row, attr))
+        attr: format_output_value(_resolve_proto_attr(row, attr))
         for attr in attributes
     }
 
