@@ -56,34 +56,42 @@ def _get_developer_token() -> str:
     return dev_token
 
 
-def _get_login_customer_id() -> str:
+def _get_login_customer_id() -> str | None:
     """Returns login customer id, if set, from the environment variable GOOGLE_ADS_LOGIN_CUSTOMER_ID."""
     return os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 
 
-def _get_googleads_client() -> GoogleAdsClient:
-    # Use this line if you have a google-ads.yaml file
-    # client = GoogleAdsClient.load_from_storage()
-    client = GoogleAdsClient(
+def _build_googleads_client(login_customer_id: str | None) -> GoogleAdsClient:
+    return GoogleAdsClient(
         credentials=_create_credentials(),
         developer_token=_get_developer_token(),
-        login_customer_id=_get_login_customer_id(),
+        login_customer_id=login_customer_id,
     )
 
-    return client
+
+# Cache clients per login_customer_id (None key = env default).
+_client_cache: dict[str | None, GoogleAdsClient] = {}
 
 
-_googleads_client = _get_googleads_client()
+def _get_or_create_client(
+    login_customer_id: str | None = None,
+) -> GoogleAdsClient:
+    key = login_customer_id if login_customer_id else _get_login_customer_id()
+    if key not in _client_cache:
+        _client_cache[key] = _build_googleads_client(key)
+    return _client_cache[key]
 
 
-def get_googleads_service(serviceName: str) -> GoogleAdsServiceClient:
-    return _googleads_client.get_service(
+def get_googleads_service(
+    serviceName: str, login_customer_id: str | None = None
+) -> GoogleAdsServiceClient:
+    return _get_or_create_client(login_customer_id).get_service(
         serviceName, interceptors=[MCPHeaderInterceptor()]
     )
 
 
 def get_googleads_type(typeName: str):
-    return _googleads_client.get_type(typeName)
+    return _get_or_create_client().get_type(typeName)
 
 
 def format_output_value(value: Any) -> Any:
